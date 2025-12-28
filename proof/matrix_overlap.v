@@ -81,7 +81,7 @@ Proof.
     exists x0, x1. lia.
 Qed.
 
-Definition overlap_definition_paral (m0 : M) (m1 : M) :=
+Definition overlap_definition_bound (m0 : M) (m1 : M) :=
   let d := data m1 - data m0 in
     exists x0 x1,
       0 <= x0 < Zwidth m0 ∧
@@ -89,10 +89,10 @@ Definition overlap_definition_paral (m0 : M) (m1 : M) :=
       atm m0 x0 0 <= atm m1 (Zwidth m1 - 1) (Zheight m1 - 1) ∧
       d - (Zheight m0) < x0 * (Zspacing m0) - x1 * (Zspacing m1) < d + (Zheight m1).
 
-Lemma overlap_definition_paral_correct : forall M0 M1, overlap_definition_paral M0 M1 <-> overlap_definition_short M0 M1.
+Lemma overlap_definition_bound_correct : forall M0 M1, overlap_definition_bound M0 M1 <-> overlap_definition_short M0 M1.
 Proof.
   destruct M0, M1.
-  unfold overlap_definition_paral, overlap_definition_short.
+  unfold overlap_definition_bound, overlap_definition_short.
   unfold inm, atm.
   unfold data, Zheight, Zwidth, Zspacing, height, width, spacing.
   split.
@@ -111,7 +111,103 @@ Proof.
     lia.
 Qed.
 
-(* count x0 a b c w = number of integer solutions (x y) to x0 <= x < x0 + w and 0 <= y and a*x + b*y <= c *)
+Definition overlap_definition_paral (m0 : M) (m1 : M) :=
+  let d := data m1 - data m0 in
+  let a := d - Zheight m0 + 1 in
+  let b := d + Zheight m1 in
+  let x0_begin := Z.max 0 ((a + Zspacing m0 - 1) / Zspacing m0) in
+  let x0_end := Z.min (Zwidth m0) ((b + Zspacing m1 * (Zwidth m1 - 1) + Zspacing m0 - 1) / Zspacing m0) in
+    exists x0 x1,
+      x0_begin <= x0 < x0_end ∧
+      a <= x0 * (Zspacing m0) - x1 * (Zspacing m1) < b.
+
+
+Lemma Zdiv_mul_le : forall a b q, b > 0 -> a <= q * b <-> (a + b - 1) / b <= q.
+Proof.
+  intros.
+  split.
+  - assert (forall x y, x <= y <-> x - 1 < y) as S by lia.
+    repeat rewrite S.
+    unfold Z.sub at 2.
+    rewrite <- (Z_div_plus (a + b - 1) (-(1)) b) by lia.
+    replace (a + b - 1 + - (1) * b) with (a - 1) by lia.
+    apply Zdiv_lt_upper_bound.
+    lia.
+  - intro A.
+    pose proof (Zdiv_eucl_exist H (a + b - 1)) as [[v r] [M R]].
+    rewrite M in A.
+    replace (b * v + r) with (r + v * b) in A by lia.
+    rewrite (Z_div_plus r v b H) in A.
+    rewrite (Zdiv_small r b R) in A.
+    replace a with (v * b + (r - b + 1)) by lia.
+    assert (v * b + (r - b + 1) <= v * b) by lia.
+    pose proof (Zmult_le_compat_r v q b).
+    lia.
+Qed.
+
+Lemma Zdiv_mul_ge : forall a b q, b > 0 -> a >= q * b <-> a / b >= q.
+Proof.
+  intros.
+  split.
+  - intro A.
+    apply Z.le_ge.
+    apply Zdiv_le_lower_bound.
+    + lia.
+    + lia.
+  - intro A.
+    apply Znot_lt_ge.
+    intro C.
+    apply Zdiv_lt_upper_bound in C.
+    + lia.
+    + lia.
+Qed.
+
+Lemma overlap_definition_paral_correct : forall M0 M1, overlap_definition_paral M0 M1 <-> overlap_definition_bound M0 M1.
+Proof.
+  destruct M0, M1.
+  unfold overlap_definition_paral, overlap_definition_bound.
+  unfold inm, atm.
+  unfold data, Zheight, Zwidth, Zspacing, height, width, spacing.
+  split.
+  - intro H. destruct H as [x0 [x1 [[LOW_x0 HIGH_x0] [LOW_p HIGH_p]]]].
+    exists x0, x1.
+    repeat split.
+    + lia.
+    + lia.
+    + pose proof (Zdiv_mul_le (data1 - data0 - Z.pos height0 + 1) (Z.pos spacing0) x0).
+      lia.
+    + assert (data1 - data0 + Z.pos spacing1 * (Z.pos width1 - 1) + (Z.pos height1 - 1) >= x0 * Z.pos spacing0) as G.
+      * apply Zdiv_mul_ge.
+        lia.
+        replace (data1 - data0 + Z.pos height1 + Z.pos spacing1 * (Z.pos width1 - 1) + Z.pos spacing0 - 1)
+           with (data1 - data0 + Z.pos spacing1 * (Z.pos width1 - 1) + (Z.pos height1 - 1) + 1 * Z.pos spacing0)
+             in HIGH_x0 by lia.
+        rewrite (Z_div_plus) in HIGH_x0 by lia.
+        lia.
+      * lia.
+    + lia.
+    + lia.
+  - intro H. destruct H as [x0 [x1 [[LOW_x0 HIGH_x0] [Clip_low [Clip_high [LOW_p HIGH_p]]]]]].
+    exists x0, x1.
+    repeat split.
+    + apply Z.max_lub.
+      * lia.
+      * apply Zdiv_mul_le.
+        lia.
+        lia.
+    + apply Z.min_glb_lt.
+      * lia.
+      * apply Znot_ge_lt.
+        intro C.
+        apply Z.ge_le in C.
+        apply Zdiv_mul_le in C.
+        lia.
+        lia.
+    + lia.
+    + lia.
+Qed.
+
+(* count_rtrap_definition x0 a b c w = number of integer solutions (x y) to x0 <= x < x0 + w and 0 <= y and a*x + b*y <= c *)
 Fixpoint count_rtrap_definition (x0 a b c : Z) (w : nat) :=
   match w with
   | O    => 0
