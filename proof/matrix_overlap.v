@@ -5,6 +5,7 @@ From Coq Require Import Lia.
 
 Open Scope Z_scope.
 
+
 Record M := mkM
   { data : Z
   ; height : positive
@@ -25,37 +26,267 @@ Definition overlap_definition (m1 : M) (m2 : M) :=
     ∧ inm m2 x2 y2
     ∧ atm m1 x1 y1 = atm m2 x2 y2.
 
-Section Examples.
-  Example m1 := mkM 0 10 10 20.
+Fact overlap_definition_symm :
+  forall m1 m2, overlap_definition m1 m2 <-> overlap_definition m2 m1.
+Proof.
+  assert (forall m1 m2, overlap_definition m1 m2 -> overlap_definition m2 m1).
+  { intros m1 m2 [x1 [y1 [x2 [y2]]]].
+    exists x2, y2, x1, y1.
+    intuition.
+  }
+  intuition.
+Qed.
 
-  Example example_in_m1 : inm m1 5 5.
+Section Examples.
+  Example example_m1 := mkM 0 10 10 20.
+
+  Example example_in_m1 : inm example_m1 5 5.
   Proof.
-    unfold m1, inm, Zheight, Zwidth, height, width.
+    unfold example_m1, inm, Zheight, Zwidth, height, width.
     lia.
   Qed.
 
-  Example m2 := mkM 10 1 10 21.
+  Example example_m2 := mkM 10 1 10 21.
 
-  Example example_m1_m2_no_overlap : ~(overlap_definition m1 m2).
+  Example example_m1_m2_no_overlap : ~(overlap_definition example_m1 example_m2).
   Proof.
     unfold overlap_definition.
-    unfold m1, m2, inm, atm.
+    unfold example_m1, example_m2, inm, atm.
     unfold data, Zheight, Zwidth, Zspacing, height, width, spacing.
     intros [x1 [y1 [x2 [y2 [[] [[]] ]]]]].
     lia.
   Qed.
 
-  Example m3 := mkM 24 4 4 20.
+  Example example_m3 := mkM 24 4 4 20.
 
-  Example example_m1_m3_overlap : overlap_definition m1 m3.
+  Example example_m1_m3_overlap : overlap_definition example_m1 example_m3.
   Proof.
     unfold overlap_definition.
-    unfold m1, m3, inm, atm.
+    unfold example_m1, example_m3, inm, atm.
     unfold data, Zheight, Zwidth, Zspacing, height, width, spacing.
     exists 1, 4, 0, 0.
     lia.
   Qed.
 End Examples.
+
+
+Theorem Zstep_lt_l: forall a b, a < b <-> a + 1 <= b.
+Proof. lia. Qed.
+
+Theorem Zstep_lt_r: forall a b, a < b <-> a <= b - 1.
+Proof. lia. Qed.
+
+Theorem Zstep_le_l: forall a b, a <= b <-> a - 1 < b.
+Proof. lia. Qed.
+
+Theorem Zstep_le_r: forall a b, a <= b <-> a < b + 1.
+Proof. lia. Qed.
+
+
+
+Theorem Zdiv_mul_le : forall a b q, 0 < b -> a <= q * b <-> (a + b - 1) / b <= q.
+Proof.
+  intros.
+  split.
+  { assert (forall x y, x <= y <-> x - 1 < y) as S by lia.
+    repeat rewrite S.
+    unfold Z.sub at 2.
+    rewrite <- (Z_div_plus (a + b - 1) (-(1)) b) by lia.
+    replace (a + b - 1 + - (1) * b) with (a - 1) by lia.
+    apply Zdiv_lt_upper_bound.
+    lia.
+  }
+  { intro A.
+    assert (b > 0) as Pb by lia.
+    pose proof (Zdiv_eucl_exist Pb (a + b - 1)) as [[v r] [M R]].
+    rewrite M in A.
+    replace (b * v + r) with (r + v * b) in A by lia.
+    rewrite (Z_div_plus r v b Pb) in A.
+    rewrite (Zdiv_small r b R) in A.
+    replace a with (v * b + (r - b + 1)) by lia.
+    assert (v * b + (r - b + 1) <= v * b) by lia.
+    pose proof (Zmult_le_compat_r v q b).
+    lia.
+  }
+Qed.
+
+Theorem Zdiv_mul_ge : forall a b q, 0 < b -> a >= q * b <-> a / b >= q.
+Proof.
+  intros.
+  split.
+  { intro A.
+    apply Z.le_ge.
+    apply Zdiv_le_lower_bound.
+    all: lia.
+  }
+  { intro A.
+    apply Znot_lt_ge.
+    intro C.
+    apply Zdiv_lt_upper_bound in C.
+    all: lia.
+  }
+Qed.
+
+Theorem Zdiv_mul_lt : forall a b q, 0 < b -> a < q * b <-> a / b < q.
+Proof.
+  intros a b q Bp.
+  split.
+  { intro A.
+    apply Zlt_not_le in A.
+    apply Znot_ge_lt.
+    rewrite <- Zdiv_mul_ge by lia.
+    lia.
+  }
+  { intro A.
+    apply Zlt_not_le in A.
+    apply Znot_ge_lt.
+    rewrite Zdiv_mul_ge by lia.
+    lia.
+  }
+Qed.
+
+
+Definition parallelogram_has_gridpoint x0 x1 a b u0 u1 :=
+    exists x y, x0 <= x < x1 /\ u0 < a * x + b * y <= u1.
+
+Lemma parallelogram_reduce:
+  forall x0 x1 a b u0 u1,
+      parallelogram_has_gridpoint x0 x1 a b u0 u1 <->
+      parallelogram_has_gridpoint x0 x1 (a mod b) b u0 u1.
+Proof.
+  intros x0 x1 a b u0 u1.
+  unfold parallelogram_has_gridpoint.
+  split.
+  { intros [x [y [X U]]].
+    exists x, (y + (a / b) * x).
+    replace (a mod b * x + b * (y + a / b * x)) with ((b * (a / b) + a mod b) * x + b * y) by lia.
+    rewrite <- Z_div_mod_eq_full.
+    split. exact X. exact U.
+  }
+  { intros [x [y [X U]]].
+    exists x, (y - (a / b) * x).
+    assert (b = 0 \/ b <> 0) as [Bz | Bnz] by lia.
+    { rewrite Bz in U.
+      rewrite Zmod_0_r in U. 
+      lia.
+    }
+    { rewrite (Zmod_eq_full a b Bnz) in U.
+      lia.
+    }
+  }
+Qed.
+
+Lemma parallelogram_simple:
+  forall x0 x1 b u0 u1, 0 < b ->
+      parallelogram_has_gridpoint x0 x1 0 b u0 u1 <->
+      (x0 < x1 /\ u0 / b < u1 / b).
+Proof.
+  intros x0 x1 b u0 u1 Pb.
+  unfold parallelogram_has_gridpoint.
+  split.
+  { intros [x [y [X [U0 U1]]]].
+    replace (0 * x + b * y) with (y * b) in * by lia.
+    apply (Zdiv_lt_upper_bound u0 b y Pb) in U0.
+    apply (Zdiv_le_lower_bound u1 b y Pb) in U1.
+    lia.
+  }
+  { intros [X U].
+    exists x0, (u1 / b).
+    replace (0 * x0 + b * (u1 / b)) with ((u1 / b) * b) in * by lia.
+    split.
+    lia.
+    split.
+    apply Zdiv_mul_lt. lia. lia.
+    pose proof (Z_mult_div_ge u1 b).
+    lia.
+  }
+Qed.
+
+Lemma parallelogram_flip:
+  forall x0 x1 a b u0 u1, 0 < a -> 0 < b -> x0 < x1 ->
+      parallelogram_has_gridpoint x0 x1 a b u0 u1 <->
+      let y0 := (u0 - a * (x1 - 1)) / b + 1 in
+      let y1 := (u1 - a * x0) / b + 1 in
+          parallelogram_has_gridpoint y0 y1 b a u0 u1.
+Proof.
+  intros x0 x1 a b u0 u1 Pa Pb Xs.
+  unfold parallelogram_has_gridpoint.
+  split.
+  { intros [x [y [[X0 X1] [U0 U1]]]].
+    exists y, x.
+    repeat split.
+    { apply Zstep_lt_l.
+      apply (Zdiv_mul_lt _ b _ Pb).
+      apply Zstep_lt_r in X1.
+      apply (Zmult_le_compat_l _ _ a) in X1.
+      lia.
+      lia.
+    }
+    { apply Zstep_le_r.
+      apply Z.ge_le.
+      apply (Zdiv_mul_ge _ b _ Pb).
+      apply (Zmult_le_compat_l _ _ a) in X0.
+      lia.
+      lia.
+    }
+    { lia.
+    }
+    { lia.
+    }
+  }
+  { intros [x [y [[X0 X1] [U0 U1]]]].
+    assert (y < x0 \/ x0 <= y < x1 \/ x1 <= y) as [Clip_low | [Normal | Clip_high ]] by lia.
+    { exists x0, x.
+      apply (Zmult_lt_compat_l y x0 a Pa) in Clip_low.
+      apply Zstep_le_r in X1.
+      apply Z.le_ge in X1.
+      apply (Zdiv_mul_ge _ _ _ Pb) in X1.
+      lia.
+    }
+    { exists y, x.
+      lia.
+    }
+    { exists (x1 - 1), x.
+      assert (0 <= a) as NNa by lia.
+      apply (Zmult_le_compat_l x1 y a) in Clip_high.
+      apply Zstep_lt_l in X0.
+      apply (Zdiv_mul_lt _ _ _ Pb) in X0.
+      lia.
+      lia.
+    }
+  }
+Qed.
+
+Lemma unused_parallelogram_reduce:
+  forall x0 x1 a b u0 u1 c d,
+    a * c + b * d = 1 ->
+      parallelogram_has_gridpoint x0 x1 a b u0 u1 <->
+      parallelogram_has_gridpoint (u0 + 1) (u1 + 1) c b (x0 - 1) (x1 - 1).
+Proof.
+  intros x0 x1 a b u0 u1 c d B.
+  unfold parallelogram_has_gridpoint.
+  split.
+  { intros [x [y [X U]]].
+    exists (a * x + b * y), (d * x - c * y).
+    split.
+    { lia.
+    }
+    { replace (c * (a * x + b * y) + b * (d * x - c * y)) with ((a * c + b * d) * x) by lia.
+      rewrite B.
+      lia.
+    }
+  }
+  { intros [u [v [U V]]].
+    exists (c * u + b * v), (d * u - a * v).
+    split.
+    { lia.
+    }
+    { replace (a * (c * u + b * v) + b * (d * u - a * v)) with ((a * c + b * d) * u) by lia.
+      rewrite B.
+      lia.
+    }
+  }
+Qed.
 
 Definition overlap_definition_short (m0 m1 : M) :=
   let d := data m1 - data m0 in
@@ -120,108 +351,72 @@ Proof.
   }
 Qed.
 
-Definition overlap_definition_paral (m0 : M) (m1 : M) :=
+Definition overlap_definition_parallelogram (m0 : M) (m1 : M) :=
   let d := data m1 - data m0 in
-  let a := d - Zheight m0 + 1 in
-  let b := d + Zheight m1 in
-  let x0_begin := Z.max 0 ((a + Zspacing m0 - 1) / Zspacing m0) in
-  let x0_end := Z.min (Zwidth m0) ((b + Zspacing m1 * (Zwidth m1 - 1) + Zspacing m0 - 1) / Zspacing m0) in
-    exists x0 x1,
-      x0_begin <= x0 < x0_end ∧
-      a <= x0 * (Zspacing m0) - x1 * (Zspacing m1) < b.
+  let u0 := d - Zheight m0 in
+  let u1 := d + Zheight m1 - 1 in
+  let x0 := Z.max 0 ((u0 + Zspacing m0) / Zspacing m0) in
+  let x1 := Z.min (Zwidth m0) ((u1 + Zspacing m1 * (Zwidth m1 - 1) + Zspacing m0) / Zspacing m0) in
+      parallelogram_has_gridpoint x0 x1 (Zspacing m0) (Zspacing m1) u0 u1.
 
-
-Lemma Zdiv_mul_le : forall a b q, b > 0 -> a <= q * b <-> (a + b - 1) / b <= q.
-Proof.
-  intros.
-  split.
-  { assert (forall x y, x <= y <-> x - 1 < y) as S by lia.
-    repeat rewrite S.
-    unfold Z.sub at 2.
-    rewrite <- (Z_div_plus (a + b - 1) (-(1)) b) by lia.
-    replace (a + b - 1 + - (1) * b) with (a - 1) by lia.
-    apply Zdiv_lt_upper_bound.
-    lia.
-  }
-  { intro A.
-    pose proof (Zdiv_eucl_exist H (a + b - 1)) as [[v r] [M R]].
-    rewrite M in A.
-    replace (b * v + r) with (r + v * b) in A by lia.
-    rewrite (Z_div_plus r v b H) in A.
-    rewrite (Zdiv_small r b R) in A.
-    replace a with (v * b + (r - b + 1)) by lia.
-    assert (v * b + (r - b + 1) <= v * b) by lia.
-    pose proof (Zmult_le_compat_r v q b).
-    lia.
-  }
-Qed.
-
-Lemma Zdiv_mul_ge : forall a b q, b > 0 -> a >= q * b <-> a / b >= q.
-Proof.
-  intros.
-  split.
-  { intro A.
-    apply Z.le_ge.
-    apply Zdiv_le_lower_bound.
-    { lia. }
-    { lia. }
-  }
-  { intro A.
-    apply Znot_lt_ge.
-    intro C.
-    apply Zdiv_lt_upper_bound in C.
-    { lia. }
-    { lia. }
-  }
-Qed.
-
-Lemma overlap_definition_paral_correct : forall M0 M1, overlap_definition_paral M0 M1 <-> overlap_definition_bound M0 M1.
+Lemma overlap_definition_parallelogram_correct : forall M0 M1, overlap_definition_parallelogram M0 M1 <-> overlap_definition_bound M0 M1.
 Proof.
   destruct M0, M1.
-  unfold overlap_definition_paral, overlap_definition_bound.
+  unfold overlap_definition_parallelogram, overlap_definition_bound.
   unfold inm, atm.
   unfold data, Zheight, Zwidth, Zspacing, height, width, spacing.
   split.
-  { intro H. destruct H as [x0 [x1 [[LOW_x0 HIGH_x0] [LOW_p HIGH_p]]]].
-    exists x0, x1.
+  { intros [x0 [x1 [[LOW_x0 HIGH_x0] [LOW_p HIGH_p]]]].
+    exists x0, (-x1).
+    replace (x0 * Z.pos spacing0 - - x1 * Z.pos spacing1) with (x0 * Z.pos spacing0 + x1 * Z.pos spacing1) by lia.
     repeat split.
     { lia. }
     { lia. }
-    { pose proof (Zdiv_mul_le (data1 - data0 - Z.pos height0 + 1) (Z.pos spacing0) x0).
+    { assert (x0 * Z.pos spacing0 >= data1 - data0 - (Z.pos height0 - 1)).
+      { apply Z.le_ge.
+        apply Zdiv_mul_le.
+        lia.
+        replace (data1 - data0 - (Z.pos height0 - 1) + Z.pos spacing0 - 1) with (data1 - data0 - Z.pos height0 + Z.pos spacing0) by lia.
+        lia.
+      }
       lia.
     }
     { assert (data1 - data0 + Z.pos spacing1 * (Z.pos width1 - 1) + (Z.pos height1 - 1) >= x0 * Z.pos spacing0) as G.
       { apply Zdiv_mul_ge.
         lia.
-        replace (data1 - data0 + Z.pos height1 + Z.pos spacing1 * (Z.pos width1 - 1) + Z.pos spacing0 - 1)
-           with (data1 - data0 + Z.pos spacing1 * (Z.pos width1 - 1) + (Z.pos height1 - 1) + 1 * Z.pos spacing0)
-             in HIGH_x0 by lia.
-        rewrite (Z_div_plus) in HIGH_x0 by lia.
-        lia.
+        apply Z.le_ge.
+        apply Zstep_le_r.
+        rewrite <- Z_div_plus.
+        replace (data1 - data0 + Z.pos spacing1 * (Z.pos width1 - 1) + (Z.pos height1 - 1) + 1 * Z.pos spacing0)
+           with (data1 - data0 + Z.pos height1 - 1 + Z.pos spacing1 * (Z.pos width1 - 1) + Z.pos spacing0) by lia.
+        all: lia.
       }
       { lia. }
     }
     { lia. }
     { lia. }
   }
-  { intro H. destruct H as [x0 [x1 [[LOW_x0 HIGH_x0] [Clip_low [Clip_high [LOW_p HIGH_p]]]]]].
-    exists x0, x1.
+  { intros [x0 [x1 [[LOW_x0 HIGH_x0] [Clip_low [Clip_high [LOW_p HIGH_p]]]]]].
+    exists x0, (-x1).
     repeat split.
     { apply Z.max_lub.
       { lia. }
-      { apply Zdiv_mul_le.
-        { lia. }
-        { lia. }
+      { assert (data1 - data0 - (Z.pos height0 - 1) <= x0 * Z.pos spacing0) as H by lia.
+        apply Zdiv_mul_le in H.
+        replace (data1 - data0 - (Z.pos height0 - 1) + Z.pos spacing0 - 1) with (data1 - data0 - Z.pos height0 + Z.pos spacing0) in H by lia.
+        all: lia.
       }
     }
     { apply Z.min_glb_lt.
       { lia. }
-      { apply Znot_ge_lt.
-        intro C.
-        apply Z.ge_le in C.
-        apply Zdiv_mul_le in C.
-        { lia. }
-        { lia. }
+      { assert (data1 - data0 + Z.pos spacing1 * (Z.pos width1 - 1) + (Z.pos height1 - 1) >= x0 * Z.pos spacing0) as H by lia.
+        apply Zdiv_mul_ge in H.
+        apply Z.ge_le in H.
+        apply Zstep_le_r in H.
+        rewrite <- Z_div_plus in H.
+        replace (data1 - data0 + Z.pos spacing1 * (Z.pos width1 - 1) + (Z.pos height1 - 1) + 1 * Z.pos spacing0)
+           with (data1 - data0 + Z.pos height1 - 1 + Z.pos spacing1 * (Z.pos width1 - 1) + Z.pos spacing0) in H by lia.
+        lia: all.
       }
     }
     { lia. }
@@ -229,388 +424,114 @@ Proof.
   }
 Qed.
 
-(* count_rtrap_definition x0 a b c w = number of integer solutions (x y) to x0 <= x < x0 + w and 0 <= y and a*x + b*y <= c *)
-Fixpoint count_rtrap_definition (x0 a b c : Z) (w : nat) :=
-  match w with
-  | O    => 0
-  | S w' => (c - a * (x0 + Z.of_nat w')) / b + 1 + count_rtrap_definition x0 a b c w'
+
+Print Pos.gcdn.
+
+Definition gas : nat.
+Admitted.
+Lemma Gas : gas = S gas.
+Admitted.
+
+Eval compute in 5 <? 8.
+
+Locate "&&".
+
+Open Scope bool.
+
+Fixpoint parallelogram_implementation x0 x1 a b u0 u1 gas :=
+  match gas with
+  | O => false
+  | S g => 
+      match x0 <? x1 with
+      | false => false
+      | true =>
+          let a2 := a mod b in
+          match a2 =? 0 with
+          | true => (x0 <? x1) && (u0 / b <? u1 / b)
+          | false => 
+              let y0 := (u0 - a2 * (x1 - 1)) / b + 1 in
+              let y1 := (u1 - a2 * x0) / b + 1 in
+                  parallelogram_implementation y0 y1 b a2 u0 u1 g
+          end
+      end
   end.
 
-Lemma count_rtrap_irr : forall x0 a b c w, b > 0 -> count_rtrap_definition x0 a b c w = let d := Z.gcd a b in count_rtrap_definition x0 (a / d) (b / d) (c / d) w.
+Lemma Zmod_nn : forall a b, 0 < b -> (a mod b = 0) \/ (a mod b > 0).
 Proof.
-  intros. simpl.
-  induction w.
-  { reflexivity. }
-  { unfold count_rtrap_definition. fold count_rtrap_definition.
-    rewrite <- IHw.
-    destruct (Zgcd_is_gcd a b) as [[ar A] [br B] _].
-    remember (Z.gcd a b) as d in *.
-    set (x := x0 + Z.of_nat w).
-    assert ((c - a * x) / b = (c / d - a / d * x) / (b / d)).
-    2: lia.
-    destruct d.
-    { repeat rewrite Zdiv_0_r.
-      replace b with 0 by lia.
-      apply Zdiv_0_r.
-    }
-    { rewrite B. rewrite Z_div_mult by lia.
-      replace (br * Z.pos p) with (Z.pos p * br) by lia.
-      rewrite <- (Zdiv_Zdiv) by lia.
-      rewrite A. rewrite Z_div_mult by lia.
-      replace (c - ar * Z.pos p * x) with (c + (- ar * x) * Z.pos p) by lia.
-      rewrite (Z_div_plus c _ (Z.pos p)) by lia.
-      replace (c / Z.pos p + - ar * x) with (c / Z.pos p - ar * x) by lia.
-      lia.
-    }
-    { pose proof (Z.gcd_nonneg a b) as GP.
-      rewrite <- Heqd in GP.
-      contradiction.
-    }
-  }
-Qed.
-
-(* count_triangle a b w =
-   for positive w: number of integer solutions (x y) to 0 <= x < w and 0 <= y and b * y <= a * x
-   for negative w: number of integer solutions (x y) to w <= x < 0 and y < 0 and a * x < b * y
-   for w equal 0 the answer is zero (both predicates above would give zero)
- *)
-
-Fixpoint count_triangle_definition_pos (a b : Z) (w : nat) :=
-  match w with
-  | O    => 0
-  | S w' => a * (Z.of_nat w') / b + 1 + count_triangle_definition_pos a b w'
-  end.
-
-Fixpoint count_triangle_definition_neg (a b : Z) (w : nat) :=
-  match w with
-  | O    => 0
-  | S w' => (a * (Z.of_nat w) - 1) / b + count_triangle_definition_neg a b w'
-  end.
-
-Definition count_triangle_definition (a b w : Z) :=
-  match w with
-  | 0 => 0
-  | Z.pos p => count_triangle_definition_pos a b (Pos.to_nat p)
-  | Z.neg p => count_triangle_definition_neg a b (Pos.to_nat p)
-  end.
-
-Lemma Z_div_opp : forall a b:Z, b > 0 -> (-a)/b = -((a-1)/b)-1.
-Proof.
-  intros.
-  assert (b <> 0) as Bnz by lia.
-  pose proof (Zdiv_eucl_exist H (a - 1)) as [[q r] [M R]].
-  rewrite M.
-  replace (-a) with (-1 - (a - 1)) by lia.
-  rewrite M.
-  replace (-1 - (b * q + r)) with ((- 1 - q) * b + (b - r - 1)) by lia.
-  rewrite (Z_div_plus_full_l (- 1 -q) b (b - r - 1) Bnz).
-  replace (b * q) with (q * b) by lia.
-  rewrite (Z_div_plus_full_l q b r Bnz).
-  rewrite (Zdiv_small r b) by (apply R).
-  rewrite (Zdiv_small) by lia.
+  intros a b Pb.
+  assert (b > 0) as Pb2 by lia.
+  pose proof Z_mod_lt a b Pb2.
   lia.
 Qed.
 
-
-Lemma count_triangle_plus_one : forall a b w, b > 0 -> count_triangle_definition a b (w + 1) = count_triangle_definition a b w + a * w / b + 1.
+Lemma parallelogram_implementation_correct : forall x0 x1 a b u0 u1, 0 < b ->
+    parallelogram_implementation x0 x1 a b u0 u1 gas = true <-> parallelogram_has_gridpoint x0 x1 a b u0 u1.
 Proof.
-  intros.
-  unfold count_triangle_definition.
-  destruct w.
-  { replace (0 + 1) with 1 by lia.
-    replace (Pos.to_nat 1) with 1%nat by lia.
-    unfold count_triangle_definition_pos.
-    lia.
+  pose proof Gas as Tank.
+  induction gas.
+  { discriminate.
   }
-  { replace (Z.pos p + 1) with (Z.pos (p + 1)) by lia.
-    replace (Pos.to_nat (p + 1)) with (S (Pos.to_nat p)) by lia.
-    unfold count_triangle_definition_pos.
-    lia.
-  }
-  { remember (Z.neg p + 1) as q.
-    destruct q.
-    { replace p with 1%positive by lia.
-      replace (Pos.to_nat 1) with 1%nat by lia.
-      unfold count_triangle_definition_neg.
-      replace (Z.of_nat 1) with 1 by lia.
-      replace (a * -1) with (-a) by lia.
-      rewrite Z_div_opp by apply H.
-      replace (a * 1) with a by lia.
-      lia.
-    }
-    { lia.
-    }
-    { replace (Pos.to_nat p) with (S (Pos.to_nat p0)) by lia.
-      replace (Z.neg p) with (Z.neg p0 - 1) by lia.
-      unfold count_triangle_definition_neg.
-      replace (a * (Z.neg p0 - 1)) with (- (a * (Z.pos p0 + 1))) by lia.
-      rewrite Z_div_opp by apply H.
-      lia.
-    }
-  }
-Qed.
-
-Definition count_rtrap_implementation (x0 a b c w : Z) : Z :=
-  let (p, d) := extgcd a b in
-  let (x1, y1) := p in
-  let mar := (-a) / d in
-  let br := b / d in
-  let cr := c / d in
-  let xc := cr * x1 in
-  let yc := cr * y1 in
-    count_triangle_definition mar br (x0 + w - xc) - count_triangle_definition mar br (x0 - xc) + yc * w.
-
-Lemma Zgcd_pos: forall a b, b > 0 -> Z.gcd a b > 0.
-Proof.
-  intros.
-  destruct b.
-  { lia.
-  }
-  { unfold Z.gcd.
-    destruct a.
-    { lia. }
-    { lia. }
-    { lia. }
-  }
-  { lia.
-  }
-Qed.
-
-Lemma count_rtrap_correct : forall x0 a b c w, b > 0 -> count_rtrap_implementation x0 a b c (Z.of_nat w) = count_rtrap_definition x0 a b c w.
-Proof.
-  intros.
-  induction w.
-  { unfold count_rtrap_definition.
-    unfold count_rtrap_implementation.
-    unfold Z.of_nat.
-    destruct (extgcd a b) as [[x1 y1] d].
-    replace (x0 + 0) with x0 by lia.
-    lia.
-  }
-  { unfold count_rtrap_definition. fold count_rtrap_definition. destruct IHw.
-    replace (Z.of_nat (S w)) with (Z.of_nat w + 1) by lia.
-    remember (Z.of_nat w) as Zw.
-    unfold count_rtrap_implementation.
-    remember (extgcd a b) as eg. symmetry in Heqeg.
-    destruct eg as [[x1 y1] d].
-    pose proof (extgcd_correct a b Heqeg) as [Bez D].
-    set (k1 := (count_triangle_definition (- a / d) (b / d) (x0 - c / d * x1))).
-    replace (x0 + (Zw + 1) - c / d * x1) with ((x0 + Zw - c / d * x1) + 1) by lia.
-    rewrite count_triangle_plus_one.
-    { set (k2 := count_triangle_definition (- a / d) (b / d) (x0 + Zw - c / d * x1)).
-      destruct (Zgcd_is_gcd a b) as [[ar A] [br B] _].
-      rewrite <- D in *.
-      rewrite A. rewrite B.
-      destruct d.
-      { lia.
+  { assert (n = S n) by intuition.
+    pose proof (IHn H) as IH.
+    clear Tank IHn H.
+    intros x0 x1 a b u0 u1 Pb.
+    unfold parallelogram_implementation.
+    assert (x1 <= x0 \/ x0 < x1) as [NX | X] by lia.
+    { unfold parallelogram_has_gridpoint.
+      split.
+      { apply Z.ltb_ge in NX.
+        rewrite NX.
+        discriminate.
       }
-      { rewrite Z_div_mult by lia.
-        replace (- (ar * Z.pos p)) with (- ar * Z.pos p) by lia.
-        rewrite Z_div_mult by lia.
-        assert (- ar * (x0 + Zw - c / Z.pos p * x1) / br + c / Z.pos p * y1 = (c - ar * Z.pos p * (x0 + Zw)) / (br * Z.pos p)).
-        2: lia.
-        replace (br * Z.pos p) with (Z.pos p * br) by lia.
-        rewrite <- Zdiv_Zdiv by lia.
-        replace (c - ar * Z.pos p * (x0 + Zw)) with (c + (- ar * (x0 + Zw) * Z.pos p)) by lia.
-        rewrite Z_div_plus by lia.
-        rewrite <- (Z_div_plus) by lia.
-        replace (c / Z.pos p * y1 * br) with (c / Z.pos p * (y1 * br)) by lia.
-        replace (y1 * br) with (1 - x1 * ar).
-        { replace (- ar * (x0 + Zw - c / Z.pos p * x1) + c / Z.pos p * (1 - x1 * ar)) with (c / Z.pos p + - ar * (x0 + Zw)) by lia.
-          lia.
-        }
-        { replace 1 with (Z.pos p / Z.pos p).
-          { rewrite <- Bez at 1.
-            rewrite A.
-            rewrite B.
-            rewrite Z.mul_assoc.
-            rewrite Z.mul_assoc.
-            rewrite Z_div_plus by lia.
-            rewrite Z_div_mult by lia.
-            lia.
-          }
-          { apply Z_div_same_full.
-            lia.
-          }
-        }
-      }
-      { pose proof (Z.gcd_nonneg a b) as GP.
-        rewrite <- D in GP.
-        contradiction.
-      }
-    }
-    { pose proof (Zgcd_pos a b H) as GP.
-      destruct (Zgcd_is_gcd a b) as [_ [br B] _].
-      rewrite <- D in *. rewrite B.
-      rewrite Z_div_mult by lia.
-      lia.
-    }
-  }
-Qed.
-
-Definition overlap_definition_rtrap (m0 : M) (m1 : M) :=
-  let d := data m1 - data m0 in
-  let a := d - Zheight m0 + 1 in
-  let b := d + Zheight m1 in
-  let x0_begin := Z.max 0 ((a + Zspacing m0 - 1) / Zspacing m0) in
-  let x0_length := (Z.min (Zwidth m0) ((b + Zspacing m1 * (Zwidth m1 - 1) + Zspacing m0 - 1) / Zspacing m0)) - x0_begin in
-    x0_length > 0 ∧
-    count_rtrap_definition x0_begin (-Zspacing m0) (Zspacing m1) (-a) (Z.to_nat x0_length) >
-    count_rtrap_definition x0_begin (-Zspacing m0) (Zspacing m1) (-b) (Z.to_nat x0_length).
-
-Lemma Z_greater_plus : forall a b x y, a + x > b + y -> a > b \/ x > y.
-Proof.
-  intros.
-  assert (a > b \/ a <= b) as [L | R] by lia.
-  { left.
-    exact L.
-  }
-  { right.
-    lia.
-  }
-Qed.
-
-Lemma overlap_definition_rtrap_correct : forall M0 M1, overlap_definition_rtrap M0 M1 <-> overlap_definition_paral M0 M1.
-Proof.
-  destruct M0, M1.
-  unfold overlap_definition_rtrap, overlap_definition_paral.
-  unfold inm, atm.
-  unfold data, Zheight, Zwidth, Zspacing, height, width, spacing.
-  remember (data1 - data0 - Z.pos height0 + 1) as c0.
-  remember (data1 - data0 + Z.pos height1) as c1.
-  remember (Z.max 0 ((c0 + Z.pos spacing0 - 1) / Z.pos spacing0)) as x0_begin.
-  remember (Z.min (Z.pos width0) ((c1 + Z.pos spacing1 * (Z.pos width1 - 1) + Z.pos spacing0 - 1) / Z.pos spacing0)) as x0_end.
-  remember (x0_end - x0_begin) as w.
-  assert (w < 0 \/ w >= 0) as [Negw | NNw] by lia.
-  { split.
-    { intros [PosW []].
-      lia.
-    }
-    { intros [x0 [_ [[LOW_x0 HIGH_x0] _]]].
-      lia.
-    }
-  }
-  { remember (Z.to_nat w) as nw.
-    replace w with (Z.of_nat nw) by lia.
-    replace x0_end with (x0_begin + Z.of_nat nw) by lia.
-    clear Heqw.
-    clear NNw.
-    clear Heqnw.
-    clear w.
-    split.
-    { intros [_ PosCount].
-      induction nw.
-      { unfold count_rtrap_definition in PosCount.
+      { intros [x [y]].
         lia.
       }
-      { unfold count_rtrap_definition in PosCount. fold count_rtrap_definition in PosCount.
-        remember (count_rtrap_definition x0_begin (- Z.pos spacing0) (Z.pos spacing1) (- c0) nw) as count0.
-        remember (count_rtrap_definition x0_begin (- Z.pos spacing0) (Z.pos spacing1) (- c1) nw) as count1.
-        remember ((x0_begin + Z.of_nat nw) * Z.pos spacing0) as g.
-        replace (- Z.pos spacing0 * (x0_begin + Z.of_nat nw)) with (-g) in * by lia.
-        remember ((- c0 - - g) / Z.pos spacing1 + 1) as v0. replace (- c0 - -g) with (g - c0) in * by lia.
-        remember ((- c1 - - g) / Z.pos spacing1 + 1) as v1. replace (- c1 - -g) with (g - c1) in * by lia.
-        apply Z_greater_plus in PosCount.
-        destruct PosCount as [Found | Later].
-        { exists (x0_begin + Z.of_nat nw), (((x0_begin + Z.of_nat nw) * Z.pos spacing0 - c0) / (Z.pos spacing1)).
-          split.
-          { lia.
-          }
-          { split.
-            { rewrite <- Heqg.
-              pose proof (Z_mult_div_ge (g - c0) (Z.pos spacing1)).
-              lia.
-            }
-            { rewrite <- Heqg.
-              replace ((g - c0) / Z.pos spacing1) with ((g - c0) / Z.pos spacing1 + 1 - 1) by lia.
-              rewrite <- Heqv0.
-              assert (g - c1 + 1 <= (v0 - 1) * Z.pos spacing1).
-              { rewrite Zdiv_mul_le.
-                { replace (g - c1 + 1 + Z.pos spacing1 - 1) with (g - c1 + 1 * Z.pos spacing1) by lia.
-                  rewrite Z_div_plus by lia.
-                  rewrite <- Heqv1.
-                  lia.
-                }
-                { lia.
-                }
-              }
-              { lia.
-              }
-            }
-          }
-        }
-        { destruct (IHnw Later) as [x0 [x1]].
-          exists x0, x1.
-          lia.
-        }
-      }
     }
-    { intros [x0 [x1 [x0_in_range [LOW HIGH]]]].
-      split.
-      { lia.
+    { pose proof (Z.ltb_lt x0 x1) as [_ H].
+      rewrite (H X).
+      rewrite parallelogram_reduce by lia.
+      pose proof (Zmod_nn a b Pb) as [Zm | Pm].
+      { rewrite Zm.
+        replace (0 =? 0) with true by lia.
+        rewrite parallelogram_simple by lia.
+        lia.
       }
-      { induction nw.
-        { lia.
-        }
-        { unfold count_rtrap_definition. fold count_rtrap_definition.
-          assert (x0 < x0_begin + Z.of_nat nw \/ x0 = x0_begin + Z.of_nat nw) as [Later | Found] by lia.
-          { assert (   (- c0 - - Z.pos spacing0 * (x0_begin + Z.of_nat nw)) / Z.pos spacing1
-                    >= (- c1 - - Z.pos spacing0 * (x0_begin + Z.of_nat nw)) / Z.pos spacing1).
-            { apply Z_div_ge.
-              { lia. }
-              { lia. }
-            }
-            { lia.
-            }
-          }
-          { assert (  (- c0 - - Z.pos spacing0 * (x0_begin + Z.of_nat nw)) / Z.pos spacing1
-                    > (- c1 - - Z.pos spacing0 * (x0_begin + Z.of_nat nw)) / Z.pos spacing1).
-            { rewrite <- Found.
-              assert (x1 * Z.pos spacing1 <= - c0 - - x0 * Z.pos spacing0) as A by lia.
-              apply Z.le_ge in A.
-              rewrite Zdiv_mul_ge in A by lia.
-              assert (~(-c1 - - x0 * Z.pos spacing0 >= x1 * Z.pos spacing1)) as B by lia.
-              rewrite Zdiv_mul_ge in B by lia.
-              apply Znot_ge_lt in B.
-              apply Z.lt_gt in B.
-              replace (-Z.pos spacing0 * x0) with (- x0 * Z.pos spacing0) by lia.
-              lia.
-            }
-            { assert (   count_rtrap_definition x0_begin (- Z.pos spacing0) (Z.pos spacing1) (- c0) nw
-                      >= count_rtrap_definition x0_begin (- Z.pos spacing0) (Z.pos spacing1) (- c1) nw).
-              { clear x0_in_range.
-                clear H.
-                clear IHnw.
-                clear Found.
-                induction nw.
-                { unfold count_rtrap_definition.
-                  lia.
-                }
-                { unfold count_rtrap_definition. fold count_rtrap_definition.
-                  assert (   (- c0 - - Z.pos spacing0 * (x0_begin + Z.of_nat nw)) / Z.pos spacing1
-                          >= (- c1 - - Z.pos spacing0 * (x0_begin + Z.of_nat nw)) / Z.pos spacing1).
-                  { apply Z_div_ge.
-                    lia.
-                    lia.
-                  }
-                  { lia.
-                  }
-                }
-              }
-              { lia.
-              }
-            }
-          }
-        }
+      { pose proof (Z.eqb_neq (a mod b) 0) as [_ Hm].
+        rewrite Hm by lia.
+        rewrite parallelogram_flip by lia.
+        apply IH.
+        lia.
       }
     }
   }
 Qed.
 
+Definition overlap_implementation (m0 : M) (m1 : M) :=
+  let d := data m1 - data m0 in
+  let u0 := d - Zheight m0 in
+  let u1 := d + Zheight m1 - 1 in
+  let x0 := Z.max 0 ((u0 + Zspacing m0) / Zspacing m0) in
+  let x1 := Z.min (Zwidth m0) ((u1 + Zspacing m1 * (Zwidth m1 - 1) + Zspacing m0) / Zspacing m0) in
+      parallelogram_implementation x0 x1 (Zspacing m0) (Zspacing m1) u0 u1 gas.
+
+Lemma overlap_implementation_correct : forall m0 m1, overlap_implementation m0 m1 = true <-> overlap_definition m0 m1.
+Proof.
+  intros m0 m1.
+  rewrite <- overlap_definition_short_correct.
+  rewrite <- overlap_definition_bound_correct.
+  rewrite <- overlap_definition_parallelogram_correct.
+  unfold overlap_implementation, overlap_definition_parallelogram.
+  rewrite parallelogram_implementation_correct by (unfold Zspacing; lia).
+  reflexivity.
+Qed.
+
+Close Scope bool.
+
+Close Scope Z_scope.
 
 From Coq Require Import Extraction.
 
 Extraction Language OCaml.
 
-Extraction M. Extraction atm. Extraction inm. Extraction count_rtrap_implementation.
+Extraction M. Extraction atm. Extraction inm. Extraction parallelogram_implementation. Extraction overlap_implementation.
 
