@@ -377,15 +377,19 @@ Proof.
   }
 Qed.
 
+Inductive Result := Overlap | NoOverlap | Timeout.
+
+Definition result_correct r p := (p <-> (r = Overlap)) /\ (r <> Timeout).
+
 Fixpoint parallelogram_implementation x0 x1 a b u0 u1 gas :=
   match gas with
-  | O => true
+  | O => Timeout
   | S g => 
       match x0 <=? x1 with
-      | false => false
+      | false => NoOverlap
       | true =>
           match b =? 0 with
-          | true => true
+          | true => Overlap
           | false =>
               let a2 := a mod b in
               let y0 := (u0 - a2 * x1) / b + 1 in
@@ -404,23 +408,21 @@ Proof.
 Qed.
 
 Lemma parallelogram_implementation_correct : forall gas x0 x1 a b u0 u1, (Nat.lt (Z.to_nat b) gas) -> 0 < b -> 
-    parallelogram_implementation x0 x1 a b u0 u1 gas = true <-> parallelogram_has_gridpoint x0 x1 a b u0 u1.
+    result_correct (parallelogram_implementation x0 x1 a b u0 u1 gas) (parallelogram_has_gridpoint x0 x1 a b u0 u1).
 Proof.
   induction gas.
   { lia.
   }
   { intros x0 x1 a b u0 u1 Gas Pb.
     unfold parallelogram_implementation. fold parallelogram_implementation.
+    unfold result_correct.
     rewrite parallelogram_reduce by lia.
     assert (x1 < x0 \/ x0 <= x1) as [NX | X] by lia.
     { pose proof (Z.leb_gt x0 x1) as [_ H].
       rewrite (H NX).
-      split.
-      { discriminate.
-      }
-      { intros [x [y [C _]]].
-        lia.
-      }
+      repeat (split; try discriminate).
+      intros [x [y [C _]]].
+      lia.
     }
     { rewrite (Zle_imp_le_bool x0 x1 X).
       pose proof (Z.eqb_neq b 0) as [_ H].
@@ -438,18 +440,18 @@ Proof.
           assert (u0 / b + 1 <= u1 / b \/ u1 / b < u0 / b + 1) as [R | NR] by lia.
           { rewrite (Zle_imp_le_bool _ _ R).
             rewrite Z.eqb_refl.
-            lia.
+            repeat (split; try lia; try discriminate).
           }
           { pose proof (Z.leb_gt (u0 / b + 1) (u1 / b)) as [_ H1].
             rewrite (H1 NR).
-            lia.
+            repeat (split; try lia; try discriminate).
           }
         }
       }
       { pose proof (Z_mod_lt a b).
-        rewrite IHgas by lia.
-        rewrite <- parallelogram_flip by lia.
-        reflexivity.
+        rewrite parallelogram_flip by lia.
+        apply IHgas.
+        all: lia.
       }
     }
   }
@@ -466,15 +468,16 @@ Definition overlap_implementation (m0 : M) (m1 : M) :=
   let gas := (S (Z.to_nat b)) in
       parallelogram_implementation x0 x1 a b u0 u1 gas.
 
-Lemma overlap_implementation_correct : forall m0 m1, overlap_implementation m0 m1 = true <-> overlap_definition m0 m1.
+Lemma overlap_implementation_correct : forall m0 m1, result_correct (overlap_implementation m0 m1) (overlap_definition m0 m1).
 Proof.
   intros m0 m1.
+  unfold result_correct.
   rewrite <- overlap_definition_short_correct.
   rewrite <- overlap_definition_bound_correct.
   rewrite <- overlap_definition_parallelogram_correct.
   unfold overlap_implementation, overlap_definition_parallelogram.
-  rewrite parallelogram_implementation_correct by (unfold Zspacing; lia).
-  reflexivity.
+  apply parallelogram_implementation_correct.
+  all: (unfold Zspacing; lia).
 Qed.
 
 Close Scope Z_scope.
