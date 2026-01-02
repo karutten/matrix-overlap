@@ -147,7 +147,7 @@ Qed.
 
 
 Definition parallelogram_has_gridpoint x0 x1 a b u0 u1 :=
-    exists x y, x0 <= x < x1 /\ u0 < a * x + b * y <= u1.
+    exists x y, x0 <= x <= x1 /\ u0 < a * x + b * y <= u1.
 
 Lemma parallelogram_reduce:
   forall x0 x1 a b u0 u1,
@@ -179,7 +179,7 @@ Qed.
 Lemma parallelogram_simple:
   forall x0 x1 b u0 u1, 0 < b ->
       parallelogram_has_gridpoint x0 x1 0 b u0 u1 <->
-      (x0 < x1 /\ u0 / b < u1 / b).
+      (x0 <= x1 /\ u0 / b < u1 / b).
 Proof.
   intros x0 x1 b u0 u1 Pb.
   unfold parallelogram_has_gridpoint.
@@ -203,10 +203,10 @@ Proof.
 Qed.
 
 Lemma parallelogram_flip:
-  forall x0 x1 a b u0 u1, 0 < a -> 0 < b -> x0 < x1 ->
+  forall x0 x1 a b u0 u1, 0 < a -> 0 < b -> x0 <= x1 ->
       parallelogram_has_gridpoint x0 x1 a b u0 u1 <->
-      let y0 := (u0 - a * (x1 - 1)) / b + 1 in
-      let y1 := (u1 - a * x0) / b + 1 in
+      let y0 := (u0 - a * x1) / b + 1 in
+      let y1 := (u1 - a * x0) / b in
           parallelogram_has_gridpoint y0 y1 b a u0 u1.
 Proof.
   intros x0 x1 a b u0 u1 Pa Pb Xs.
@@ -214,31 +214,24 @@ Proof.
   split.
   { intros [x [y [[X0 X1] [U0 U1]]]].
     exists y, x.
-    repeat split.
+    repeat (split; try lia).
     { apply Zstep_lt_l.
       apply (Zdiv_mul_lt _ b _ Pb).
-      apply Zstep_lt_r in X1.
       apply (Zmult_le_compat_l _ _ a) in X1.
       lia.
       lia.
     }
-    { apply Zstep_le_r.
-      apply Z.ge_le.
+    { apply Z.ge_le.
       apply (Zdiv_mul_ge _ b _ Pb).
       apply (Zmult_le_compat_l _ _ a) in X0.
       lia.
       lia.
-    }
-    { lia.
-    }
-    { lia.
     }
   }
   { intros [x [y [[X0 X1] [U0 U1]]]].
     assert (y < x0 \/ x0 <= y < x1 \/ x1 <= y) as [Clip_low | [Normal | Clip_high ]] by lia.
     { exists x0, x.
       apply (Zmult_lt_compat_l y x0 a Pa) in Clip_low.
-      apply Zstep_le_r in X1.
       apply Z.le_ge in X1.
       apply (Zdiv_mul_ge _ _ _ Pb) in X1.
       lia.
@@ -246,43 +239,11 @@ Proof.
     { exists y, x.
       lia.
     }
-    { exists (x1 - 1), x.
-      assert (0 <= a) as NNa by lia.
+    { exists x1, x.
       apply (Zmult_le_compat_l x1 y a) in Clip_high.
       apply Zstep_lt_l in X0.
       apply (Zdiv_mul_lt _ _ _ Pb) in X0.
       lia.
-      lia.
-    }
-  }
-Qed.
-
-Lemma unused_parallelogram_reduce:
-  forall x0 x1 a b u0 u1 c d,
-    a * c + b * d = 1 ->
-      parallelogram_has_gridpoint x0 x1 a b u0 u1 <->
-      parallelogram_has_gridpoint (u0 + 1) (u1 + 1) c b (x0 - 1) (x1 - 1).
-Proof.
-  intros x0 x1 a b u0 u1 c d B.
-  unfold parallelogram_has_gridpoint.
-  split.
-  { intros [x [y [X U]]].
-    exists (a * x + b * y), (d * x - c * y).
-    split.
-    { lia.
-    }
-    { replace (c * (a * x + b * y) + b * (d * x - c * y)) with ((a * c + b * d) * x) by lia.
-      rewrite B.
-      lia.
-    }
-  }
-  { intros [u [v [U V]]].
-    exists (c * u + b * v), (d * u - a * v).
-    split.
-    { lia.
-    }
-    { replace (a * (c * u + b * v) + b * (d * u - a * v)) with ((a * c + b * d) * u) by lia.
-      rewrite B.
       lia.
     }
   }
@@ -355,8 +316,8 @@ Definition overlap_definition_parallelogram (m0 : M) (m1 : M) :=
   let d := data m1 - data m0 in
   let u0 := d - Zheight m0 in
   let u1 := d + Zheight m1 - 1 in
-  let x0 := Z.max 0 ((u0 + Zspacing m0) / Zspacing m0) in
-  let x1 := Z.min (Zwidth m0) ((u1 + Zspacing m1 * (Zwidth m1 - 1) + Zspacing m0) / Zspacing m0) in
+  let x0 := Z.max 0 (u0 / Zspacing m0 + 1) in
+  let x1 := Z.min (Zwidth m0 - 1) ((u1 + Zspacing m1 * (Zwidth m1 - 1)) / Zspacing m0) in
       parallelogram_has_gridpoint x0 x1 (Zspacing m0) (Zspacing m1) u0 u1.
 
 Lemma overlap_definition_parallelogram_correct : forall M0 M1, overlap_definition_parallelogram M0 M1 <-> overlap_definition_bound M0 M1.
@@ -369,88 +330,66 @@ Proof.
   { intros [x0 [x1 [[LOW_x0 HIGH_x0] [LOW_p HIGH_p]]]].
     exists x0, (-x1).
     replace (x0 * Z.pos spacing0 - - x1 * Z.pos spacing1) with (x0 * Z.pos spacing0 + x1 * Z.pos spacing1) by lia.
-    repeat split.
-    { lia. }
-    { lia. }
+    repeat (split; try lia).
     { assert (x0 * Z.pos spacing0 >= data1 - data0 - (Z.pos height0 - 1)).
       { apply Z.le_ge.
-        apply Zdiv_mul_le.
-        lia.
-        replace (data1 - data0 - (Z.pos height0 - 1) + Z.pos spacing0 - 1) with (data1 - data0 - Z.pos height0 + Z.pos spacing0) by lia.
+        rewrite Zdiv_mul_le by lia.
+        replace (data1 - data0 - (Z.pos height0 - 1) + Z.pos spacing0 - 1) with (data1 - data0 - Z.pos height0 + 1 * Z.pos spacing0) by lia.
+        rewrite Z_div_plus by lia.
         lia.
       }
       lia.
     }
     { assert (data1 - data0 + Z.pos spacing1 * (Z.pos width1 - 1) + (Z.pos height1 - 1) >= x0 * Z.pos spacing0) as G.
-      { apply Zdiv_mul_ge.
-        lia.
+      { rewrite Zdiv_mul_ge by lia.
         apply Z.le_ge.
         apply Zstep_le_r.
-        rewrite <- Z_div_plus.
-        replace (data1 - data0 + Z.pos spacing1 * (Z.pos width1 - 1) + (Z.pos height1 - 1) + 1 * Z.pos spacing0)
-           with (data1 - data0 + Z.pos height1 - 1 + Z.pos spacing1 * (Z.pos width1 - 1) + Z.pos spacing0) by lia.
-        all: lia.
+        replace (data1 - data0 + Z.pos spacing1 * (Z.pos width1 - 1) + (Z.pos height1 - 1))
+           with (data1 - data0 + Z.pos height1 - 1 + Z.pos spacing1 * (Z.pos width1 - 1)) by lia.
+         lia.
       }
       { lia. }
     }
-    { lia. }
-    { lia. }
   }
   { intros [x0 [x1 [[LOW_x0 HIGH_x0] [Clip_low [Clip_high [LOW_p HIGH_p]]]]]].
     exists x0, (-x1).
-    repeat split.
+    repeat (split; try lia).
     { apply Z.max_lub.
       { lia. }
       { assert (data1 - data0 - (Z.pos height0 - 1) <= x0 * Z.pos spacing0) as H by lia.
-        apply Zdiv_mul_le in H.
-        replace (data1 - data0 - (Z.pos height0 - 1) + Z.pos spacing0 - 1) with (data1 - data0 - Z.pos height0 + Z.pos spacing0) in H by lia.
-        all: lia.
+        rewrite Zdiv_mul_le in H by lia.
+        replace (data1 - data0 - (Z.pos height0 - 1) + Z.pos spacing0 - 1) with (data1 - data0 - Z.pos height0 + 1 * Z.pos spacing0) in H by lia.
+        rewrite Z_div_plus in H by lia.
+        lia.
       }
     }
-    { apply Z.min_glb_lt.
+    { apply Z.min_glb.
       { lia. }
       { assert (data1 - data0 + Z.pos spacing1 * (Z.pos width1 - 1) + (Z.pos height1 - 1) >= x0 * Z.pos spacing0) as H by lia.
-        apply Zdiv_mul_ge in H.
+        rewrite Zdiv_mul_ge in H by lia.
         apply Z.ge_le in H.
         apply Zstep_le_r in H.
-        rewrite <- Z_div_plus in H.
-        replace (data1 - data0 + Z.pos spacing1 * (Z.pos width1 - 1) + (Z.pos height1 - 1) + 1 * Z.pos spacing0)
-           with (data1 - data0 + Z.pos height1 - 1 + Z.pos spacing1 * (Z.pos width1 - 1) + Z.pos spacing0) in H by lia.
-        lia: all.
+        replace (data1 - data0 + Z.pos spacing1 * (Z.pos width1 - 1) + (Z.pos height1 - 1))
+           with (data1 - data0 + Z.pos height1 - 1 + Z.pos spacing1 * (Z.pos width1 - 1)) in H by lia.
+        lia.
       }
     }
-    { lia. }
-    { lia. }
   }
 Qed.
 
-
-Print Pos.gcdn.
-
-Definition gas : nat.
-Admitted.
-Lemma Gas : gas = S gas.
-Admitted.
-
-Eval compute in 5 <? 8.
-
-Locate "&&".
-
-Open Scope bool.
-
 Fixpoint parallelogram_implementation x0 x1 a b u0 u1 gas :=
   match gas with
-  | O => false
+  | O => true
   | S g => 
-      match x0 <? x1 with
+      match x0 <=? x1 with
       | false => false
       | true =>
-          let a2 := a mod b in
-          match a2 =? 0 with
-          | true => (x0 <? x1) && (u0 / b <? u1 / b)
-          | false => 
-              let y0 := (u0 - a2 * (x1 - 1)) / b + 1 in
-              let y1 := (u1 - a2 * x0) / b + 1 in
+          match b =? 0 with
+          | true => true
+          | false =>
+              let a2 := a mod b in
+              let y0 := (u0 - a2 * x1) / b + 1 in
+              let y1 := (u1 - a2 * x0) / b in
                   parallelogram_implementation y0 y1 b a2 u0 u1 g
           end
       end
@@ -464,55 +403,68 @@ Proof.
   lia.
 Qed.
 
-Lemma parallelogram_implementation_correct : forall x0 x1 a b u0 u1, 0 < b ->
+Lemma parallelogram_implementation_correct : forall gas x0 x1 a b u0 u1, (Nat.lt (Z.to_nat b) gas) -> 0 < b -> 
     parallelogram_implementation x0 x1 a b u0 u1 gas = true <-> parallelogram_has_gridpoint x0 x1 a b u0 u1.
 Proof.
-  pose proof Gas as Tank.
   induction gas.
-  { discriminate.
+  { lia.
   }
-  { assert (n = S n) by intuition.
-    pose proof (IHn H) as IH.
-    clear Tank IHn H.
-    intros x0 x1 a b u0 u1 Pb.
-    unfold parallelogram_implementation.
-    assert (x1 <= x0 \/ x0 < x1) as [NX | X] by lia.
-    { unfold parallelogram_has_gridpoint.
+  { intros x0 x1 a b u0 u1 Gas Pb.
+    unfold parallelogram_implementation. fold parallelogram_implementation.
+    rewrite parallelogram_reduce by lia.
+    assert (x1 < x0 \/ x0 <= x1) as [NX | X] by lia.
+    { pose proof (Z.leb_gt x0 x1) as [_ H].
+      rewrite (H NX).
       split.
-      { apply Z.ltb_ge in NX.
-        rewrite NX.
-        discriminate.
+      { discriminate.
       }
-      { intros [x [y]].
+      { intros [x [y [C _]]].
         lia.
       }
     }
-    { pose proof (Z.ltb_lt x0 x1) as [_ H].
-      rewrite (H X).
-      rewrite parallelogram_reduce by lia.
+    { rewrite (Zle_imp_le_bool x0 x1 X).
+      pose proof (Z.eqb_neq b 0) as [_ H].
+      rewrite H by lia.
       pose proof (Zmod_nn a b Pb) as [Zm | Pm].
       { rewrite Zm.
-        replace (0 =? 0) with true by lia.
         rewrite parallelogram_simple by lia.
-        lia.
+        rewrite Zstep_lt_l.
+        replace (u0 - 0 * x1) with u0 by lia.
+        replace (u1 - 0 * x0) with u1 by lia.
+        destruct gas.
+        { lia.
+        }
+        { unfold parallelogram_implementation.
+          assert (u0 / b + 1 <= u1 / b \/ u1 / b < u0 / b + 1) as [R | NR] by lia.
+          { rewrite (Zle_imp_le_bool _ _ R).
+            rewrite Z.eqb_refl.
+            lia.
+          }
+          { pose proof (Z.leb_gt (u0 / b + 1) (u1 / b)) as [_ H1].
+            rewrite (H1 NR).
+            lia.
+          }
+        }
       }
-      { pose proof (Z.eqb_neq (a mod b) 0) as [_ Hm].
-        rewrite Hm by lia.
-        rewrite parallelogram_flip by lia.
-        apply IH.
-        lia.
+      { pose proof (Z_mod_lt a b).
+        rewrite IHgas by lia.
+        rewrite <- parallelogram_flip by lia.
+        reflexivity.
       }
     }
   }
 Qed.
 
 Definition overlap_implementation (m0 : M) (m1 : M) :=
+  let a := Zspacing m0 in
+  let b := Zspacing m1 in
   let d := data m1 - data m0 in
   let u0 := d - Zheight m0 in
   let u1 := d + Zheight m1 - 1 in
-  let x0 := Z.max 0 ((u0 + Zspacing m0) / Zspacing m0) in
-  let x1 := Z.min (Zwidth m0) ((u1 + Zspacing m1 * (Zwidth m1 - 1) + Zspacing m0) / Zspacing m0) in
-      parallelogram_implementation x0 x1 (Zspacing m0) (Zspacing m1) u0 u1 gas.
+  let x0 := Z.max 0 (u0 / a + 1) in
+  let x1 := Z.min (Zwidth m0 - 1) ((u1 + b * (Zwidth m1 - 1)) / a) in
+  let gas := (S (Z.to_nat b)) in
+      parallelogram_implementation x0 x1 a b u0 u1 gas.
 
 Lemma overlap_implementation_correct : forall m0 m1, overlap_implementation m0 m1 = true <-> overlap_definition m0 m1.
 Proof.
@@ -525,13 +477,11 @@ Proof.
   reflexivity.
 Qed.
 
-Close Scope bool.
-
 Close Scope Z_scope.
 
 From Coq Require Import Extraction.
 
 Extraction Language OCaml.
 
-Extraction M. Extraction atm. Extraction inm. Extraction parallelogram_implementation. Extraction overlap_implementation.
+Extraction M. Extraction parallelogram_implementation. Extraction overlap_implementation.
 
